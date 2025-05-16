@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "./supabase";
-import "./CreateRoom.css"; // Import the CSS file
+import "./CreateRoom.css";
 
-const CreateRoom = () => {
+const CreateRoom = ({ onRoomCreated }) => {
   const [roomName, setRoomName] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [joinCode, setJoinCode] = useState(null);
-  const [roomId, setRoomId] = useState(null); // NEW: track actual room ID
+  const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
 
   const generateJoinCode = () => {
@@ -20,13 +19,14 @@ const CreateRoom = () => {
       return;
     }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    setIsCreating(true);
+    setErrorMessage("");
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
 
     if (userError || !user) {
       setErrorMessage("User not authenticated.");
+      setIsCreating(false);
       return;
     }
 
@@ -34,30 +34,25 @@ const CreateRoom = () => {
 
     const { data, error } = await supabase
       .from("rooms")
-      .insert([{ name: roomName, created_by: user.id, join_code: joinCode }])
+      .insert([{ 
+        name: roomName, 
+        created_by: user.id, 
+        join_code: joinCode 
+      }])
       .select("id, join_code")
       .single();
 
     if (error) {
       setErrorMessage("Error creating room. Try a different name.");
       console.error("Error:", error);
+      setIsCreating(false);
     } else {
-      setJoinCode(data.join_code);
-      setRoomId(data.id); // Save the UUID to redirect properly
+      onRoomCreated(data.id); // Register room for back-button prevention
+      navigate(`/room/${data.id}`, { 
+        state: { joinCode: data.join_code },
+        replace: true 
+      });
     }
-  };
-
-  const handleContinue = () => {
-    if (!roomId) {
-      setErrorMessage("Missing room ID.");
-      return;
-    }
-    navigate(`/room/${roomId}`); // Redirect to /room/:id
-  };
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(joinCode);
-    alert("Join code copied to clipboard!");
   };
 
   return (
@@ -65,35 +60,21 @@ const CreateRoom = () => {
       <h2 className="create-room-title">Create a Room</h2>
       {errorMessage && <p className="error-message">{errorMessage}</p>}
 
-      {!joinCode ? (
-        <>
-          <input
-            type="text"
-            placeholder="Enter Room Name"
-            value={roomName}
-            onChange={(e) => setRoomName(e.target.value)}
-            className="create-room-input"
-          />
-          <button onClick={handleCreateRoom} className="primary-button">
-            Create Room
-          </button>
-        </>
-      ) : (
-        <div className="room-success">
-          <p className="room-success-message">Room created successfully!</p>
-          <p className="mb-4">
-            <strong>Join Code:</strong>{" "}
-            <code className="join-code">{joinCode}</code>
-          </p>
-          <button onClick={copyToClipboard} className="secondary-button">
-            Copy Code
-          </button>
-          <br />
-          <button onClick={handleContinue} className="primary-button">
-            Continue to Room
-          </button>
-        </div>
-      )}
+      <input
+        type="text"
+        placeholder="Enter Room Name"
+        value={roomName}
+        onChange={(e) => setRoomName(e.target.value)}
+        className="create-room-input"
+        disabled={isCreating}
+      />
+      <button 
+        onClick={handleCreateRoom} 
+        className="primary-button"
+        disabled={isCreating}
+      >
+        {isCreating ? "Creating Room..." : "Create Room"}
+      </button>
     </div>
   );
 };
