@@ -1,0 +1,195 @@
+/* Full-page container with flex layout for vertical distribution */
+.page-center {
+  height: 100vh;
+  width: 100vw;
+  background-color: #ffffff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+/* Dashboard layout - evenly distribute vertically */
+.dashboard-container {
+  width: 100%;
+  max-width: 1000px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between; /* even vertical space */
+  height: 100%;
+  padding: 3rem 2rem;
+  background-color: transparent;
+}
+
+/* Header with title and logout button aligned */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+/* Profile section with icon and username */
+.dashboard-header .flex {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashboard-header .w-8 {
+  width: 32px;
+}
+
+.dashboard-header .h-8 {
+  height: 32px;
+}
+
+.dashboard-header .text-lg {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+/* Logout button */
+.logout-button {
+  padding: 0.6rem 1.2rem;
+  background-color: #e63946;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.logout-button:hover {
+  background-color: #d62828;
+}
+
+/* Button + input section with spacing */
+.action-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  align-items: center;
+}
+
+/* For wider input+button layout */
+.join-room-container {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 600px;
+}
+
+/* Create button */
+.create-room-button,
+.join-room-button {
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.create-room-button {
+  background-color: #4f46e5;
+  color: white;
+}
+
+.create-room-button:hover {
+  background-color: #4338ca;
+}
+
+.join-room-button {
+  background-color: #10b981;
+  color: white;
+}
+
+.join-room-button:hover {
+  background-color: #059669;
+}
+
+/* Input field */
+.join-room-input {
+  flex-grow: 1;
+  padding: 0.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+.join-room-input:focus {
+  outline: none;
+  border-color: #4f46e5;
+}
+
+/* Room list section */
+.rooms-section {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding-top: 2rem;
+}
+
+.rooms-title {
+  font-size: 1.5rem;
+  color: #374151;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.no-rooms {
+  text-align: center;
+  color: #6b7280;
+  font-size: 1.1rem;
+  padding: 2rem;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  border: 2px dashed #e5e7eb;
+}
+
+.rooms-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.room-item {
+  background-color: #f3f4f6;
+  border-radius: 8px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.room-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.room-link {
+  display: block;
+  padding: 1rem;
+  color: #1f2937;
+  text-decoration: none;
+  font-weight: 500;
+  text-align: center;
+}
+
+.room-link:hover {
+  color: #4f46e5;
+}
+
+.room-code {
+  text-align: center;
+  font-size: 0.9rem;
+  color: #6b7280;
+  padding-bottom: 1rem;
+}
