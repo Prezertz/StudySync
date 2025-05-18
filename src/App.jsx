@@ -24,6 +24,11 @@ const AuthWrapper = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      // Clear history when logging out
+      if (!session && location.pathname !== "/") {
+        navigate("/", { replace: true });
+        window.history.pushState(null, "", "/");
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -34,7 +39,6 @@ const AuthWrapper = () => {
     const rooms = [...createdRooms, roomId];
     setCreatedRooms(rooms);
     localStorage.setItem('createdRooms', JSON.stringify(rooms));
-    // Remove from deleted rooms if recreating
     removeDeletedRoom(roomId);
   };
 
@@ -43,7 +47,6 @@ const AuthWrapper = () => {
     const rooms = [...deletedRooms, roomId];
     setDeletedRooms(rooms);
     localStorage.setItem('deletedRooms', JSON.stringify(rooms));
-    // Remove from created rooms
     setCreatedRooms(prev => prev.filter(id => id !== roomId));
     localStorage.setItem('createdRooms', 
       JSON.stringify(createdRooms.filter(id => id !== roomId)));
@@ -68,7 +71,9 @@ const AuthWrapper = () => {
     if (loading) return;
 
     const authRoutes = ["/", "/username"];
+    const protectedRoutes = ["/dashboard", "/create-room", "/room"];
     const isAuthRoute = authRoutes.includes(location.pathname);
+    const isProtectedRoute = protectedRoutes.some(route => location.pathname.startsWith(route));
     const isRoomRoute = location.pathname.startsWith("/room/");
     const roomId = location.pathname.split("/room/")[1];
 
@@ -78,11 +83,17 @@ const AuthWrapper = () => {
       window.history.pushState(null, "", "/dashboard");
     }
 
-    // Handle back button from created or deleted rooms
-    if (session && isRoomRoute && 
-        (createdRooms.includes(roomId) || deletedRooms.includes(roomId))) {
+    // Redirect to login if accessing protected routes while logged out
+    if (!session && isProtectedRoute) {
+      navigate("/", { replace: true });
+      window.history.pushState(null, "", "/");
+    }
+
+    // Handle back button from created/deleted rooms or after logout
+    if ((session && isRoomRoute && (createdRooms.includes(roomId) || deletedRooms.includes(roomId))) || 
+        (!session && isProtectedRoute)) {
       const handleBackButton = () => {
-        navigate("/dashboard", { replace: true });
+        navigate(session ? "/dashboard" : "/", { replace: true });
       };
       
       window.addEventListener('popstate', handleBackButton);
