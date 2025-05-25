@@ -1,49 +1,76 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "./supabase";
-import "./Username.css";
 
 const Username = () => {
   const [username, setUsername] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
+  // Get current user on mount
+  const [userId, setUserId] = useState(null);
+  useEffect(() => {
+    const getUser = async () => {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+
+      if (error || !user) {
+        setError("User not authenticated");
+        return;
+      }
+      setUserId(user.id);
+    };
+    getUser();
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!username.trim()) {
+      setError("Username cannot be empty");
+      return;
+    }
+    setLoading(true);
     setError(null);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (!user || authError) {
-      setError("User not found. Please log in.");
+    // Insert profile with username and user ID
+    const { error: insertError } = await supabase
+      .from("profiles")
+      .insert([{ id: userId, username: username.trim() }]);
+
+    if (insertError) {
+      // Handle unique constraint or other DB errors
+      setError("Failed to save username: " + insertError.message);
+      setLoading(false);
       return;
     }
 
-    const { error: insertError } = await supabase
-      .from("profiles")
-      .insert([{ id: user.id, username }], { onConflict: ['id'] });
-
-    if (insertError) {
-      setError(insertError.message);
-    } else {
-      navigate("/dashboard");
-    }
+    // Success, navigate to dashboard
+    navigate("/dashboard");
   };
 
+  if (!userId) {
+    // Still loading user or error occurred
+    return <div className="page-center">{error ? error : "Loading..."}</div>;
+  }
+
   return (
-    <div className="username-container">
-      <h2 className="username-title">Set Your Username</h2>
-      {error && <p className="username-error">{error}</p>}
-      <form onSubmit={handleSubmit} className="username-form">
+    <div className="page-center">
+      <form onSubmit={handleSubmit} className="auth-container">
+        <h2 className="auth-title">Choose a Username</h2>
+        {error && <p className="error-message">{error}</p>}
         <input
           type="text"
-          placeholder="Enter Username"
+          placeholder="Username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="username-input"
-          required
+          className="auth-input"
+          disabled={loading}
         />
-        <button type="submit" className="username-button">
-          Save Username
+        <button type="submit" disabled={loading} className="auth-button signup-button">
+          {loading ? "Saving..." : "Save Username"}
         </button>
       </form>
     </div>

@@ -10,21 +10,61 @@ import Room from "./Room";
 const AuthWrapper = () => {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [profileComplete, setProfileComplete] = useState(false);
   const [createdRooms, setCreatedRooms] = useState([]);
   const [deletedRooms, setDeletedRooms] = useState([]);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Check auth state
+  // Fetch session and profile completeness on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const fetchSessionAndProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
-      setLoading(false);
-    });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user?.id) {
+        // Fetch profile to check if username is set
+        const { data: profiles, error } = await supabase
+          .from("profiles")
+          .select("username")
+          .eq("id", session.user.id)
+          .single();
+
+        if (!error && profiles?.username) {
+          setProfileComplete(true);
+        } else {
+          setProfileComplete(false);
+        }
+      } else {
+        setProfileComplete(false);
+      }
+
+      setLoading(false);
+    };
+
+    fetchSessionAndProfile();
+
+    // Subscribe to auth state changes to update session and profile completeness
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
-      // Clear history when logging out
+
+      if (session?.user?.id) {
+        const { data: profiles, error } = await supabase
+          .from("profiles")
+          .select("username")
+          .eq("id", session.user.id)
+          .single();
+
+        if (!error && profiles?.username) {
+          setProfileComplete(true);
+        } else {
+          setProfileComplete(false);
+        }
+      } else {
+        setProfileComplete(false);
+      }
+
+      // Clear history and redirect to login on logout
       if (!session && location.pathname !== "/") {
         navigate("/", { replace: true });
         window.history.pushState(null, "", "/");
@@ -66,27 +106,35 @@ const AuthWrapper = () => {
     if (savedDeletedRooms) setDeletedRooms(JSON.parse(savedDeletedRooms));
   }, []);
 
-  // Handle route protection
+  // Handle route protection and redirects
   useEffect(() => {
     if (loading) return;
 
-    const authRoutes = ["/", "/username"];
+    const authRoutes = ["/auth", "/username"];
     const protectedRoutes = ["/dashboard", "/create-room", "/room"];
     const isAuthRoute = authRoutes.includes(location.pathname);
     const isProtectedRoute = protectedRoutes.some(route => location.pathname.startsWith(route));
     const isRoomRoute = location.pathname.startsWith("/room/");
     const roomId = location.pathname.split("/room/")[1];
 
-    // Redirect from auth routes if logged in
-    if (session && isAuthRoute) {
+    // Redirect from auth routes if logged in AND profile is complete
+    if (session && isAuthRoute && profileComplete) {
       navigate("/dashboard", { replace: true });
       window.history.pushState(null, "", "/dashboard");
+      return;
+    }
+
+    // Allow access to /username if logged in but profile incomplete
+    if (session && location.pathname === "/username" && !profileComplete) {
+      // Let user stay on /username until profile completed
+      return;
     }
 
     // Redirect to login if accessing protected routes while logged out
     if (!session && isProtectedRoute) {
       navigate("/", { replace: true });
       window.history.pushState(null, "", "/");
+      return;
     }
 
     // Handle back button from created/deleted rooms or after logout
@@ -99,7 +147,7 @@ const AuthWrapper = () => {
       window.addEventListener('popstate', handleBackButton);
       return () => window.removeEventListener('popstate', handleBackButton);
     }
-  }, [session, loading, location, createdRooms, deletedRooms]);
+  }, [session, loading, location, createdRooms, deletedRooms, profileComplete]);
 
   if (loading) return <div className="page-center">Loading...</div>;
 

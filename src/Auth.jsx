@@ -13,19 +13,34 @@ const Auth = () => {
   const signUp = async () => {
     setLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signUp({ email, password });
 
-    if (error) {
-      setError(error.message);
-    } else {
-      navigate("/username");
+    const {
+      data: { user },
+      error: signUpError,
+    } = await supabase.auth.signUp({ email, password });
+
+    if (signUpError) {
+      setError(signUpError.message);
+      setLoading(false);
+      return;
     }
+
+    if (!user?.id) {
+      setError("User ID missing after signup");
+      setLoading(false);
+      return;
+    }
+
+    // Profile creation moved to /username page
+
+    navigate("/username");
     setLoading(false);
   };
 
   const signIn = async () => {
     setLoading(true);
     setError(null);
+
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -36,13 +51,14 @@ const Auth = () => {
     } else {
       navigate("/dashboard");
     }
+
     setLoading(false);
   };
 
   return (
     <div className="page-center">
       <div className="auth-container">
-        <h2 className="auth-title"> Authentication</h2>
+        <h2 className="auth-title">Authentication</h2>
         {error && <p className="error-message">{error}</p>}
         <input
           type="email"
