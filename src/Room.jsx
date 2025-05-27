@@ -3,7 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "./supabase";
 import "./Room.css";
 import { FaTrash } from "react-icons/fa";
-import { comment } from "postcss";
 
 const isValidUUID = (uuid) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
@@ -21,16 +20,17 @@ const Room = ({ onRoomDeleted }) => {
   const [dragActive, setDragActive] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [uploadCategory, setUploadCategory] = useState("assignment");
 
-  // Fetch room data
   useEffect(() => {
     if (!isValidUUID(id)) return;
 
     const fetchRoomData = async () => {
-      const [{ data: room, error: roomError }, { data: userResult, error: userError }] = await Promise.all([
-        supabase.from("rooms").select("name, join_code, created_by").eq("id", id).single(),
-        supabase.auth.getUser(),
-      ]);
+      const [{ data: room, error: roomError }, { data: userResult, error: userError }] =
+        await Promise.all([
+          supabase.from("rooms").select("name, join_code, created_by").eq("id", id).single(),
+          supabase.auth.getUser(),
+        ]);
 
       if (roomError) console.error("Room error:", roomError);
       else {
@@ -49,14 +49,13 @@ const Room = ({ onRoomDeleted }) => {
     fetchRoomData();
   }, [id]);
 
-  // Fetch files
   useEffect(() => {
     if (!isValidUUID(id)) return;
 
     const fetchFiles = async () => {
       const { data, error } = await supabase
         .from("files")
-        .select("file_name, file_url, uploaded_by")
+        .select("file_name, file_url, uploaded_by, category")
         .eq("room_id", id);
 
       if (error) console.error("Fetch files error:", error);
@@ -66,7 +65,6 @@ const Room = ({ onRoomDeleted }) => {
     fetchFiles();
   }, [id]);
 
-  // Fetch comments
   useEffect(() => {
     if (!isValidUUID(id)) return;
 
@@ -84,78 +82,71 @@ const Room = ({ onRoomDeleted }) => {
     fetchComments();
   }, [id]);
 
-  // File upload handler
-  const uploadFiles = useCallback(async (selectedFiles) => {
-    if (!isValidUUID(id)) return;
+  const uploadFiles = useCallback(
+    async (selectedFiles) => {
+      if (!isValidUUID(id)) return;
 
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) return;
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) return;
 
-    for (const file of selectedFiles) {
-      const timestamp = Date.now();
-      const path = `rooms/${id}/${timestamp}_${file.name}`;
+      for (const file of selectedFiles) {
+        const timestamp = Date.now();
+        const path = `rooms/${id}/${timestamp}_${file.name}`;
 
-      const { error: uploadError } = await supabase.storage.from("uploads").upload(path, file);
-      if (uploadError) {
-        console.error("Upload error:", uploadError);
-        continue;
+        const { error: uploadError } = await supabase.storage.from("uploads").upload(path, file);
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          continue;
+        }
+
+        const { data: { publicUrl } } = supabase.storage.from("uploads").getPublicUrl(path);
+
+        const { error: insertError } = await supabase.from("files").insert([
+          {
+            room_id: id,
+            uploaded_by: user.id,
+            file_name: file.name,
+            file_url: publicUrl,
+            file_size: file.size,
+            category: uploadCategory,
+          },
+        ]);
+
+        if (insertError) console.error("DB insert error:", insertError);
+        else setFiles((prev) => [
+          ...prev,
+          {
+            file_name: file.name,
+            file_url: publicUrl,
+            uploaded_by: user.id,
+            category: uploadCategory,
+          },
+        ]);
       }
+    },
+    [id, uploadCategory]
+  );
 
-      const { data: { publicUrl } } = supabase.storage.from("uploads").getPublicUrl(path);
-
-      const { error: insertError } = await supabase.from("files").insert([
-        {
-          room_id: id,
-          uploaded_by: user.id,
-          file_name: file.name,
-          file_url: publicUrl,
-          file_size: file.size,
-        },
-      ]);
-
-      if (insertError) console.error("DB insert error:", insertError);
-      else setFiles((prev) => [...prev, { file_name: file.name, file_url: publicUrl, uploaded_by: user.id }]);
-    }
-  }, [id]);
-
-  // Delete file handler
   const deleteFile = async (file) => {
     if (!currentUserId || currentUserId !== file.uploaded_by) return;
 
     const path = file.file_url.split("/storage/v1/object/public/uploads/")[1];
     if (!path) return;
 
-    const { error: storageError } = await supabase.storage
-      .from("uploads")
-      .remove([path]);
+    const { error: storageError } = await supabase.storage.from("uploads").remove([path]);
+    if (storageError) return console.error("Storage deletion error:", storageError);
 
-    if (storageError) {
-      console.error("Storage deletion error:", storageError);
-      return;
-    }
-
-    const { error: dbError } = await supabase
-      .from("files")
-      .delete()
-      .eq("file_url", file.file_url);
-
-    if (dbError) {
-      console.error("DB deletion error:", dbError);
-      return;
-    }
+    const { error: dbError } = await supabase.from("files").delete().eq("file_url", file.file_url);
+    if (dbError) return console.error("DB deletion error:", dbError);
 
     setFiles((prev) => prev.filter((f) => f.file_url !== file.file_url));
   };
 
-  // Delete room handler
   const handleDeleteRoom = async () => {
-    const confirmDelete = window.confirm("Are you sure you want to delete this room and all its data?");
-    if (!confirmDelete) return;
-
+    if (!window.confirm("Are you sure you want to delete this room and all its data?")) return;
     setIsDeleting(true);
 
     try {
-      // Fetch all room files first
       const { data: roomFiles, error: fetchFilesError } = await supabase
         .from("files")
         .select("file_url")
@@ -163,30 +154,23 @@ const Room = ({ onRoomDeleted }) => {
 
       if (fetchFilesError) throw fetchFilesError;
 
-      // Delete files from storage if they exist
-      if (roomFiles && roomFiles.length > 0) {
-        const filePaths = roomFiles
-          .map(f => f.file_url.split("/storage/v1/object/public/uploads/")[1])
-          .filter(Boolean);
+      const filePaths = roomFiles
+        .map((f) => f.file_url.split("/storage/v1/object/public/uploads/")[1])
+        .filter(Boolean);
 
-        if (filePaths.length) {
-          const { error: storageDeleteError } = await supabase
-            .storage
-            .from("uploads")
-            .remove(filePaths);
-
-          if (storageDeleteError) throw storageDeleteError;
-        }
+      if (filePaths.length) {
+        const { error: storageDeleteError } = await supabase.storage
+          .from("uploads")
+          .remove(filePaths);
+        if (storageDeleteError) throw storageDeleteError;
       }
 
-      // Delete all related data in parallel
       await Promise.all([
         supabase.from("comments").delete().eq("room_id", id),
         supabase.from("files").delete().eq("room_id", id),
         supabase.from("room_members").delete().eq("room_id", id),
       ]);
 
-      // Finally delete the room
       const { error: roomDeleteError } = await supabase
         .from("rooms")
         .delete()
@@ -195,10 +179,7 @@ const Room = ({ onRoomDeleted }) => {
 
       if (roomDeleteError) throw roomDeleteError;
 
-      // Notify parent component about deleted room
       onRoomDeleted(id);
-
-      // Redirect with history replacement
       navigate("/dashboard", { replace: true });
     } catch (error) {
       console.error("Error deleting room:", error);
@@ -208,27 +189,18 @@ const Room = ({ onRoomDeleted }) => {
     }
   };
 
-  // Drag and drop handlers
-  const handleFileChange = (e) => {
-    const selected = Array.from(e.target.files);
-    uploadFiles(selected);
-  };
-
+  const handleFileChange = (e) => uploadFiles(Array.from(e.target.files));
   const handleDrop = (e) => {
     e.preventDefault();
     setDragActive(false);
-    const dropped = Array.from(e.dataTransfer.files);
-    uploadFiles(dropped);
+    uploadFiles(Array.from(e.dataTransfer.files));
   };
-
   const handleDragOver = (e) => {
     e.preventDefault();
     setDragActive(true);
   };
-
   const handleDragLeave = () => setDragActive(false);
 
-  // Join code copy handler
   const copyToClipboard = () => {
     navigator.clipboard.writeText(joinCode).then(() => {
       setCopied(true);
@@ -236,7 +208,6 @@ const Room = ({ onRoomDeleted }) => {
     });
   };
 
-  // Comment submission handler
   const handleCommentSubmit = async (e) => {
     e.preventDefault();
     if (!newComment.trim()) return;
@@ -245,190 +216,186 @@ const Room = ({ onRoomDeleted }) => {
     if (error || !user) return;
 
     const { data: insertedComment, error: insertError } = await supabase
-  .from("comments")
-  .insert([
-    {
-      room_id: id,
-      user_id: user.id,
-      content: newComment.trim(),
-    },
-  ])
-  .select("id, user_id, content, created_at") // don't need profile here
-  .single();
+      .from("comments")
+      .insert([{ room_id: id, user_id: user.id, content: newComment.trim() }])
+      .select("id, user_id, content, created_at")
+      .single();
 
-if (insertError) {
-  console.error("Comment insert error:", insertError);
-} else {
-  const { data: userProfile, error: profileError } = await supabase
-    .from("profiles")
-    .select("username")
-    .eq("id", user.id)
-    .single();
+    if (insertError) return console.error("Comment insert error:", insertError);
 
-  if (profileError) {
-    console.error("Profile fetch error:", profileError);
-  }
+    const { data: userProfile, error: profileError } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", user.id)
+      .single();
 
-  setComments((prev) => [
-    ...prev,
-    {
-      ...insertedComment,
-      profiles: {
-        username: userProfile?.username || "Anonymous",
+    if (profileError) console.error("Profile fetch error:", profileError);
+
+    setComments((prev) => [
+      ...prev,
+      {
+        ...insertedComment,
+        profiles: { username: userProfile?.username || "Anonymous" },
       },
-    },
-  ]);
+    ]);
 
-  setNewComment("");
-}
-
-
-      
-    
+    setNewComment("");
   };
-  console.log(comments)
 
   return (
-    <div className="max-w-4xl mx-auto p-6 font-sans text-gray-900">
-  <div className="bg-white shadow-xl rounded-2xl p-6 space-y-6">
-    <h1 className="text-3xl font-bold text-gray-800">
-      {isValidUUID(id) ? roomName : "Invalid Room"}
-    </h1>
+    <div className="max-w-4xl mx-auto px-4 py-8 font-sans text-gray-900">
+      <div className="bg-white shadow-2xl rounded-2xl p-6 md:p-8 space-y-8">
+        <h1 className="text-3xl font-bold text-gray-800">
+          {isValidUUID(id) ? roomName : "Invalid Room"}
+        </h1>
 
-    {isValidUUID(id) && currentUserId === createdBy && (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between bg-gray-100 p-4 rounded-lg">
-          <p className="text-gray-700">
-            <strong>Join Code:</strong>{" "}
-            <code className="bg-gray-200 px-2 py-1 rounded text-sm">{joinCode}</code>
-          </p>
-          <button
-            onClick={copyToClipboard}
-            className="px-4 py-2 text-sm font-medium text-white bg-black hover:bg-gray-700 rounded-lg transition"
-          >
-            {copied ? "Copied!" : "Copy"}
-          </button>
-        </div>
-        <button
-          className="w-full py-2 text-sm font-medium text-white bg-black hover:bg-gray-700 rounded-lg transition"
-          onClick={handleDeleteRoom}
-          disabled={isDeleting}
-        >
-          {isDeleting ? "Deleting..." : "🗑 Delete Room"}
-        </button>
-      </div>
-    )}
-
-    {isValidUUID(id) && (
-      <>
-        {/* Upload Section */}
-        <div
-          className={`border-2 border-dashed p-6 rounded-xl transition ${
-            dragActive ? "border-blue-500 bg-blue-50" : "border-gray-300"
-          }`}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-        >
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Upload Files</h2>
-          <label
-            htmlFor="file-upload"
-            className="flex flex-col items-center justify-center cursor-pointer text-gray-600 hover:text-blue-600"
-          >
-            <p>
-              📁 Drag & drop files here, or{" "}
-              <span className="text-blue-600 underline">browse</span>
-            </p>
-            <input
-              id="file-upload"
-              type="file"
-              multiple
-              onChange={handleFileChange}
-              className="hidden"
-            />
-          </label>
-        </div>
-
-        {/* Uploaded Files Section */}
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Uploaded Files</h2>
-          {files.length === 0 ? (
-            <p className="text-gray-500">No files uploaded yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {files.map((file) => (
-                <li
-                  key={file.file_url}
-                  className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border"
-                >
-                  <div className="flex items-center gap-2">
-                    <span>📄</span>
-                    <a
-                      href={file.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      {file.file_name}
-                    </a>
-                  </div>
-                  {file.uploaded_by === currentUserId && (
-                    <button
-                      onClick={() => deleteFile(file)}
-                      className="text-gray-400 hover:text-red-800 border-none"
-                      title="Delete file"
-                    >
-                      <FaTrash />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Comments Section */}
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Comments</h2>
-
-          <ul className="space-y-4 mb-4">
-            {comments.length === 0 ? (
-              <li className="text-gray-500">No comments yet.</li>
-            ) : (
-              comments.map((comment) => (
-                <li key={comment.id} className="bg-gray-50 p-4 rounded-lg border">
-                  <p className="text-gray-700 mb-1">{comment.content}</p>
-                  <span className="text-sm text-gray-500">
-                    <strong>{comment.profiles?.username || "Anonymous"}</strong> ·{" "}
-                    {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-
-                  </span>
-                </li>
-              ))
-            )}
-          </ul>
-
-          <form onSubmit={handleCommentSubmit} className="space-y-3">
-            <textarea
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Write a comment..."
-              className="w-full p-4 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-300 focus:outline-none bg-white text-gray-800"
-              rows="4"
-            />
+        {/* Join Code + Delete Room */}
+        {isValidUUID(id) && currentUserId === createdBy && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-gray-100 p-4 rounded-lg">
+              <p className="text-gray-700 mb-2 sm:mb-0">
+                <strong>Join Code:</strong>{" "}
+                <code className="bg-gray-200 px-2 py-1 rounded text-sm">{joinCode}</code>
+              </p>
+              <button
+                onClick={copyToClipboard}
+                className="px-4 py-2 text-sm font-medium text-white bg-black hover:bg-gray-800 rounded-lg transition"
+              >
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
             <button
-              type="submit"
-              className="px-4 py-2 bg-black text-white rounded-lg hover:bg- gray-900 transition"
+              onClick={handleDeleteRoom}
+              disabled={isDeleting}
+              className="w-full py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
             >
-              Post Comment
+              {isDeleting ? "Deleting..." : "🗑 Delete Room"}
             </button>
-          </form>
-        </div>
-      </>
-    )}
-  </div>
-</div>
+          </div>
+        )}
 
+        {/* Upload Files */}
+        {isValidUUID(id) && (
+          <>
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              className={`border-2 border-dashed p-6 rounded-xl transition text-center ${
+                dragActive ? "border-blue-500 bg-blue-50" : "border-gray-300"
+              }`}
+            >
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Upload Files</h2>
+              <label className="block mb-1 font-medium text-gray-700">Select Category:</label>
+              <select
+                value={uploadCategory}
+                onChange={(e) => setUploadCategory(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white text-gray-700 mb-4"
+              >
+                <option value="assignment">Assignment</option>
+                <option value="notes">Notes & Resources</option>
+              </select>
+              <label htmlFor="file-upload" className="cursor-pointer text-gray-600 hover:text-blue-600 transition">
+                <p>📁 Drag & drop files here, or <span className="text-blue-600 underline">browse</span></p>
+                <input id="file-upload" type="file" multiple onChange={handleFileChange} className="hidden" />
+              </label>
+            </div>
+
+            {/* Uploaded Files */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Uploaded Files</h2>
+              {files.length === 0 ? (
+                <p className="text-gray-500">No files uploaded yet.</p>
+              ) : (
+                ["assignment", "notes"].map((categoryKey) => {
+                  const label =
+                    categoryKey === "assignment" ? "Assignments" : "Notes & Resources";
+                  const filtered = files.filter((f) => f.category === categoryKey);
+
+                  return (
+                    <div key={categoryKey} className="mb-6">
+                      <h3 className="text-lg font-semibold text-gray-700 mb-2">{label}</h3>
+                      {filtered.length === 0 ? (
+                        <p className="text-sm text-gray-400">No {label.toLowerCase()} uploaded.</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {filtered.map((file) => (
+                            <li
+                              key={file.file_url}
+                              className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span>📄</span>
+                                <a
+                                  href={file.file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  {file.file_name}
+                                </a>
+                              </div>
+                              {file.uploaded_by === currentUserId && (
+                                <button
+                                  onClick={() => deleteFile(file)}
+                                  className="text-gray-400 hover:text-red-700 transition"
+                                  title="Delete file"
+                                >
+                                  <FaTrash />
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Comments */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Comments</h2>
+              <ul className="space-y-4 mb-4">
+                {comments.length === 0 ? (
+                  <li className="text-gray-500">No comments yet.</li>
+                ) : (
+                  comments.map((comment) => (
+                    <li key={comment.id} className="bg-gray-50 p-4 rounded-lg border">
+                      <p className="text-gray-700 mb-1">{comment.content}</p>
+                      <span className="text-sm text-gray-500">
+                        <strong>{comment.profiles?.username || "Anonymous"}</strong> ·{" "}
+                        {new Date(comment.created_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </li>
+                  ))
+                )}
+              </ul>
+
+              <form onSubmit={handleCommentSubmit} className="space-y-3">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Write a comment..."
+                  rows="4"
+                  className="w-full p-4 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-300 focus:outline-none bg-white text-gray-800"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition"
+                >
+                  Post Comment
+                </button>
+              </form>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 };
 
