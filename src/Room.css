@@ -1,26 +1,28 @@
-
+/* === Layout === */
 .room-container {
-  width: 100vw;
-  max-height: 1000vh;
-  padding: 1rem 1rem;
+  width: 100%;
+  min-height: 100vh;
+  padding: 2rem;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   background-color: #0f172a;
+  box-sizing: border-box;
 }
 
 .room-inner {
   width: 100%;
-  max-width: 800px;
+  max-width: 900px;
   background-color: #ffffff;
-  border-radius: 16px;
-  padding: 2.5rem;
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+  border-radius: 1rem;
+  padding: 2rem 2.5rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
 }
 
 /* === Headings === */
 .room-title {
-  font-size: 2.5rem;
+  font-size: 2.25rem;
   color: #1e293b;
   font-weight: 700;
   text-align: center;
@@ -28,23 +30,23 @@
 }
 
 .section-title {
-  font-size: 1.375rem;
+  font-size: 1.25rem;
   color: #1e293b;
   margin-bottom: 1rem;
   font-weight: 600;
 }
 
-/* === Join Code Section === */
+/* === Join Code === */
 .join-code-container {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   background-color: #eef2ff;
-  padding: 1rem 1.25rem;
-  border-radius: 10px;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  gap: 1rem;
   margin-bottom: 2rem;
-  flex-wrap: wrap;
-  gap: 0.75rem;
 }
 
 .join-code-text {
@@ -57,7 +59,7 @@
   color: #ffffff;
   border: none;
   padding: 0.5rem 1rem;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   cursor: pointer;
   font-size: 0.875rem;
   transition: background-color 0.2s ease;
@@ -67,37 +69,42 @@
   background-color: #4338ca;
 }
 
-/* === Section Containers === */
+/* === Sections === */
 .upload-section,
 .files-section,
 .comments-section {
   background-color: #f8fafc;
-  border-radius: 12px;
+  border-radius: 0.75rem;
   padding: 1.5rem;
   margin-bottom: 2rem;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-/* === File Drop Zone === */
+/* === File Upload === */
 .file-drop-zone {
   display: flex;
-  justify-content: center;
   align-items: center;
-  height: 120px;
+  justify-content: center;
+  padding: 1rem;
+  min-height: 120px;
   border: 2px dashed #d1d5db;
-  border-radius: 10px;
+  border-radius: 0.75rem;
   background-color: #ffffff;
-  cursor: pointer;
   text-align: center;
   font-size: 0.95rem;
   color: #4b5563;
-  transition: background-color 0.2s, border-color 0.2s;
-  padding: 1rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .file-drop-zone:hover {
   background-color: #f1f5f9;
   border-color: #6366f1;
+}
+
+.drag-active .file-drop-zone {
+  background-color: #e0e7ff;
+  border-color: #4f46e5;
 }
 
 .file-input {
@@ -106,22 +113,12 @@
 
 .browse-text {
   color: #4f46e5;
-  font-weight: 500;
   text-decoration: underline;
+  font-weight: 500;
   margin-left: 4px;
 }
 
-/* === Files List === */
-.no-files {
-  text-align: center;
-  color: #6b7280;
-  font-size: 1rem;
-  padding: 1.25rem;
-  background-color: #ffffff;
-  border-radius: 10px;
-  border: 2px dashed #d1d5db;
-}
-
+/* === Files === */
 .files-list {
   list-style: none;
   padding: 0;
@@ -130,60 +127,60 @@
 
 .file-item {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1rem;
   background-color: #ffffff;
-  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
   margin-bottom: 0.75rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s ease;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: transform 0.2s;
 }
 
 .file-item:hover {
   transform: translateY(-2px);
 }
 
-.file-icon {
-  margin-right: 0.75rem;
-  font-size: 1.25rem;
-}
-
 .file-link {
-  color: #1e40af;
+  color: #2563eb;
   text-decoration: none;
   font-weight: 500;
   flex-grow: 1;
+  margin-left: 0.5rem;
 }
 
 .delete-button {
-  background: transparent;
+  background: none;
   border: none;
+  color: #9ca3af;
   font-size: 1rem;
   cursor: pointer;
+  transition: color 0.2s;
 }
 
-/* === Comments Section === */
-.comments-section {
-  background-color: #f1f5f9;
+.delete-button:hover {
+  color: #ef4444;
 }
 
+/* === Comments === */
 .comments-list {
-  margin-top: 1.5rem;
   list-style: none;
   padding: 0;
+  margin: 0 0 1rem 0;
 }
 
 .comment-item {
   background-color: #ffffff;
   padding: 1rem;
-  border-radius: 10px;
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
   margin-bottom: 1rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
 
 .comment-content {
+  color: #1f2937;
   margin-bottom: 0.5rem;
-  color: #111827;
 }
 
 .comment-meta {
@@ -191,19 +188,16 @@
   color: #6b7280;
 }
 
-/* === Comment Form === */
 .comment-form {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  margin-top: 1rem;
 }
 
 .comment-input {
-  flex-grow: 1;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  border: 1px solid #cbd5e1;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
   font-size: 1rem;
   resize: vertical;
 }
@@ -211,9 +205,9 @@
 .comment-button {
   background-color: #3b82f6;
   color: white;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
   border: none;
-  padding: 0.75rem 1.25rem;
-  border-radius: 8px;
   font-size: 0.95rem;
   cursor: pointer;
   transition: background-color 0.2s ease;
@@ -223,26 +217,8 @@
   background-color: #2563eb;
 }
 
-/* === Drag State === */
-.drag-active .file-drop-zone {
-  background-color: #e0e7ff;
-  border-color: #4f46e5;
-}
-
-/* === Greeting === */
-.user-greeting {
-  font-size: 1rem;
-  font-weight: 500;
-  color: #334155;
-  margin-bottom: 1rem;
-}
-
 /* === Responsive Design === */
 @media (max-width: 1024px) {
-  .room-container {
-    padding: 1rem 2rem;
-  }
-
   .room-inner {
     padding: 2rem;
   }
@@ -252,20 +228,18 @@
   }
 
   .section-title {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
   }
 
   .file-drop-zone {
-    height: auto;
     flex-direction: column;
+    font-size: 0.9rem;
     padding: 1.5rem;
-    font-size: 0.95rem;
   }
 
   .join-code-container {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.5rem;
   }
 }
 
@@ -283,11 +257,11 @@
   }
 
   .section-title {
-    font-size: 1.125rem;
+    font-size: 1rem;
   }
 
-  .comment-button,
-  .copy-button {
+  .copy-button,
+  .comment-button {
     width: 100%;
   }
 }
