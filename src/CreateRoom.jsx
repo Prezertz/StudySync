@@ -9,8 +9,21 @@ const CreateRoom = ({ onRoomCreated }) => {
   const [isCreating, setIsCreating] = useState(false);
   const navigate = useNavigate();
 
-  const generateJoinCode = () => {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  const generateUniqueCode = async (attempts = 0) => {
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    
+    const { data: existing } = await supabase
+      .from("rooms")
+      .select("id")
+      .eq("join_code", code)
+      .maybeSingle();
+
+    if (!existing || attempts >= 3) {
+      
+      return existing ? `${code}-${Date.now().toString(36).slice(-2)}` : code;
+    }
+    return generateUniqueCode(attempts + 1);
   };
 
   const handleCreateRoom = async () => {
@@ -22,36 +35,46 @@ const CreateRoom = ({ onRoomCreated }) => {
     setIsCreating(true);
     setErrorMessage("");
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    try {
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error("User not authenticated");
 
-    if (userError || !user) {
-      setErrorMessage("User not authenticated.");
-      setIsCreating(false);
-      return;
-    }
+      // Generate guaranteed unique code
+      const joinCode = await generateUniqueCode();
 
-    const joinCode = generateJoinCode();
+      // Create room with atomic insertion
+      const { data, error } = await supabase
+        .from("rooms")
+        .insert([{ 
+          name: roomName, 
+          created_by: user.id, 
+          join_code: joinCode 
+        }])
+        .select("id, join_code")
+        .single();
 
-    const { data, error } = await supabase
-      .from("rooms")
-      .insert([{ 
-        name: roomName, 
-        created_by: user.id, 
-        join_code: joinCode 
-      }])
-      .select("id, join_code")
-      .single();
+      if (error) {
+        // Handle unique constraint violation (should theoretically never happen)
+        if (error.code === "23505") {
+          const newCode = await generateUniqueCode();
+          return handleCreateRoom(); // Retry with new code
+        }
+        throw error;
+      }
 
-    if (error) {
-      setErrorMessage("Error creating room. Try a different name.");
-      console.error("Error:", error);
-      setIsCreating(false);
-    } else {
-      onRoomCreated(data.id); // Register room for back-button prevention
+      // Success
+      onRoomCreated(data.id);
       navigate(`/room/${data.id}`, { 
         state: { joinCode: data.join_code },
         replace: true 
       });
+
+    } catch (error) {
+      setErrorMessage(error.message || "Error creating room. Please try again.");
+      console.error("Room creation error:", error);
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -67,11 +90,13 @@ const CreateRoom = ({ onRoomCreated }) => {
         onChange={(e) => setRoomName(e.target.value)}
         className="create-room-input"
         disabled={isCreating}
+        maxLength={50}
       />
       <button 
         onClick={handleCreateRoom} 
         className="primary-button"
-        disabled={isCreating}
+        disabled={isCreating || !roomName.trim()}
+        aria-busy={isCreating}
       >
         {isCreating ? "Creating Room..." : "Create Room"}
       </button>

@@ -44,42 +44,86 @@ const Room = ({ onRoomDeleted }) => {
       } else {
         setCurrentUserId(userResult.user.id);
       }
+
+      // Initial fetch for files and comments
+      const [{ data: filesData }, { data: commentsData }] = await Promise.all([
+        supabase.from("files").select("file_name, file_url, uploaded_by, category").eq("room_id", id),
+        supabase
+          .from("comments")
+          .select("id, user_id, content, created_at, profiles(username)")
+          .eq("room_id", id)
+          .order("created_at", { ascending: true })
+      ]);
+
+      if (filesData) setFiles(filesData);
+      if (commentsData) setComments(commentsData);
     };
 
     fetchRoomData();
-  }, [id]);
 
-  useEffect(() => {
-    if (!isValidUUID(id)) return;
+    // Set up real-time subscriptions
+    const filesChannel = supabase
+      .channel('files_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'files',
+          filter: `room_id=eq.${id}`
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setFiles(prev => [...prev, payload.new]);
+          } else if (payload.eventType === 'DELETE') {
+            setFiles(prev => prev.filter(file => file.file_url !== payload.old.file_url));
+          } else if (payload.eventType === 'UPDATE') {
+            setFiles(prev => prev.map(file => 
+              file.file_url === payload.old.file_url ? payload.new : file
+            ));
+          }
+        }
+      )
+      .subscribe();
 
-    const fetchFiles = async () => {
-      const { data, error } = await supabase
-        .from("files")
-        .select("file_name, file_url, uploaded_by, category")
-        .eq("room_id", id);
+    const commentsChannel = supabase
+      .channel('comments_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comments',
+          filter: `room_id=eq.${id}`
+        },
+        async (payload) => {
+          if (payload.eventType === 'INSERT') {
+            // Fetch the username for the new comment
+            const { data: userProfile } = await supabase
+              .from('profiles')
+              .select('username')
+              .eq('id', payload.new.user_id)
+              .single();
 
-      if (error) console.error("Fetch files error:", error);
-      else setFiles(data || []);
+            setComments(prev => [
+              ...prev,
+              {
+                ...payload.new,
+                profiles: { username: userProfile?.username || 'Anonymous' }
+              }
+            ]);
+          } else if (payload.eventType === 'DELETE') {
+            setComments(prev => prev.filter(comment => comment.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup function
+    return () => {
+      supabase.removeChannel(filesChannel);
+      supabase.removeChannel(commentsChannel);
     };
-
-    fetchFiles();
-  }, [id]);
-
-  useEffect(() => {
-    if (!isValidUUID(id)) return;
-
-    const fetchComments = async () => {
-      const { data, error } = await supabase
-        .from("comments")
-        .select("id, user_id, content, created_at, profiles(username)")
-        .eq("room_id", id)
-        .order("created_at", { ascending: true });
-
-      if (error) console.error("Fetch comments error:", error);
-      else setComments(data || []);
-    };
-
-    fetchComments();
   }, [id]);
 
   const uploadFiles = useCallback(
@@ -88,42 +132,31 @@ const Room = ({ onRoomDeleted }) => {
 
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) return;
-for (const file of selectedFiles) {
-  if (file.size > 10 * 1024 * 1024) {
-    alert(`File "${file.name}" exceeds the 10MB limit and was not uploaded.`);
-    continue;
-  }
 
-  const timestamp = Date.now();
-  const path = `rooms/${id}/${timestamp}_${file.name}`;
+      for (const file of selectedFiles) {
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`File "${file.name}" exceeds the 10MB limit and was not uploaded.`);
+          continue;
+        }
 
-  const { error: uploadError } = await supabase.storage.from("uploads").upload(path, file);
-  if (uploadError) {
-    console.error("Upload error:", uploadError);
-    continue;
-  }
+        const timestamp = Date.now();
+        const path = `rooms/${id}/${timestamp}_${file.name}`;
 
+        const { error: uploadError } = await supabase.storage.from("uploads").upload(path, file);
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          continue;
+        }
 
         const { data: { publicUrl } } = supabase.storage.from("uploads").getPublicUrl(path);
 
-        const { error: insertError } = await supabase.from("files").insert([
+        await supabase.from("files").insert([
           {
             room_id: id,
             uploaded_by: user.id,
             file_name: file.name,
             file_url: publicUrl,
             file_size: file.size,
-            category: uploadCategory,
-          },
-        ]);
-
-        if (insertError) console.error("DB insert error:", insertError);
-        else setFiles((prev) => [
-          ...prev,
-          {
-            file_name: file.name,
-            file_url: publicUrl,
-            uploaded_by: user.id,
             category: uploadCategory,
           },
         ]);
@@ -141,10 +174,7 @@ for (const file of selectedFiles) {
     const { error: storageError } = await supabase.storage.from("uploads").remove([path]);
     if (storageError) return console.error("Storage deletion error:", storageError);
 
-    const { error: dbError } = await supabase.from("files").delete().eq("file_url", file.file_url);
-    if (dbError) return console.error("DB deletion error:", dbError);
-
-    setFiles((prev) => prev.filter((f) => f.file_url !== file.file_url));
+    await supabase.from("files").delete().eq("file_url", file.file_url);
   };
 
   const handleDeleteRoom = async () => {
@@ -220,35 +250,17 @@ for (const file of selectedFiles) {
     const { data: { user }, error } = await supabase.auth.getUser();
     if (error || !user) return;
 
-    const { data: insertedComment, error: insertError } = await supabase
+    await supabase
       .from("comments")
-      .insert([{ room_id: id, user_id: user.id, content: newComment.trim() }])
-      .select("id, user_id, content, created_at")
-      .single();
-
-    if (insertError) return console.error("Comment insert error:", insertError);
-
-    const { data: userProfile, error: profileError } = await supabase
-      .from("profiles")
-      .select("username")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError) console.error("Profile fetch error:", profileError);
-
-    setComments((prev) => [
-      ...prev,
-      {
-        ...insertedComment,
-        profiles: { username: userProfile?.username || "Anonymous" },
-      },
-    ]);
-
+      .insert([{ room_id: id, user_id: user.id, content: newComment.trim() }]);
+      
     setNewComment("");
   };
 
+  
+
   return (
-  <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8 font-sans text-gray-900">
+  <div className="min-h-screen bg-gradient-to-br from-stone-50 to-amber-50 py-8 px-4 sm:px-6 lg:px-8 font-sans">
   <div className="max-w-5xl mx-auto space-y-10">
     
     {/* Room Header */}
